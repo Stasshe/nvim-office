@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm version "${{ inputs.bump }}" --no-git-tag-version
+      - run: pnpm check
+      - run: pnpm build
+      - name: Commit and tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          printf '%s\n' "$VERSION" > VERSION
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add VERSION package.json pnpm-lock.yaml dist/viewer.js
+          git commit -m "Release v$VERSION"
+          git tag "v$VERSION"
+          git push origin HEAD --follow-tags
+          gh release create "v$VERSION" --generate-notes --title "v$VERSION"
+

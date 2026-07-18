@@ -1,0 +1,24 @@
+{
+  "name": "nvim-office",
+  "version": "0.1.0",
+  "description": "High-fidelity DOCX previews inside Neovim",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/viewer.ts --bundle --format=iife --platform=browser --target=es2022 --outfile=dist/viewer.js",
+    "check": "tsc --noEmit",
+    "render": "node bin/render.mjs"
+  },
+  "dependencies": {
+    "docx-renderer": "^0.2.2",
+    "playwright-core": "^1.61.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
