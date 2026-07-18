@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { access, mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { createServer } from "node:http";
 import { delimiter, dirname, join } from "node:path";
@@ -61,7 +61,7 @@ async function findBrowser(requested) {
 async function clearPages(outputDirectory) {
   await mkdir(outputDirectory, { recursive: true });
   const entries = await readdir(outputDirectory);
-  const generated = entries.filter((entry) => /^page-\d+\.png$/.test(entry) || entry === "manifest.json");
+  const generated = entries.filter((entry) => /^page-\d+(?:-\d+-\d+)?\.png$/.test(entry) || entry === "manifest.json");
   await Promise.all(generated.map((entry) => unlink(join(outputDirectory, entry))));
 }
 
@@ -120,6 +120,7 @@ async function startServer(documentPath) {
 async function renderDocument(input, outputDirectory, browserPath) {
   await access(input, constants.R_OK);
   await access(viewerPath, constants.R_OK);
+  const sourceStat = await stat(input);
   await clearPages(outputDirectory);
 
   const { server, url } = await startServer(input);
@@ -140,15 +141,29 @@ async function renderDocument(input, outputDirectory, browserPath) {
     }
 
     const files = [];
+    const renderId = `${Date.now()}-${process.pid}`;
     for (let index = 0; index < pageData.length; index += 1) {
-      const file = `page-${index + 1}.png`;
+      const file = `page-${index + 1}-${renderId}.png`;
       await sections.nth(index).screenshot({ path: join(outputDirectory, file) });
-      files.push({ file, ...pageData[index] });
+      const renderedPage = { file, ...pageData[index] };
+      files.push(renderedPage);
+      process.stdout.write(`${JSON.stringify({
+        type: "page",
+        index: index + 1,
+        pageCount: pageData.length,
+        page: renderedPage,
+      })}\n`);
     }
 
-    const manifest = { source: input, pages: files };
+    const manifest = {
+      source: input,
+      sourceMetadata: {
+        size: sourceStat.size,
+        mtimeMs: Math.trunc(sourceStat.mtimeMs),
+      },
+      pages: files,
+    };
     await writeFile(join(outputDirectory, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-    process.stdout.write(`${JSON.stringify({ pageCount: files.length })}\n`);
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));
@@ -169,4 +184,3 @@ if (!input || !outputDirectory) {
     process.exitCode = 1;
   }
 }
-

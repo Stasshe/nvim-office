@@ -3,6 +3,7 @@ local renderer = require("nvim-office.render")
 
 local M = {}
 local states = {}
+local image_namespace = vim.api.nvim_create_namespace("snacks.image")
 
 local function resolve_buffer(buffer)
   if buffer == nil or buffer == 0 then
@@ -36,6 +37,10 @@ local function show_error(buffer, message)
   if not vim.api.nvim_buf_is_valid(buffer) then
     return
   end
+  local state = state_for(buffer)
+  if state then
+    state.displayed_file = nil
+  end
   clean_image(buffer)
   replace_lines(buffer, {
     "nvim-office could not render this document.",
@@ -55,6 +60,54 @@ local function read_manifest(path)
     return nil, "The render manifest is invalid"
   end
   return manifest, nil
+end
+
+local function source_metadata(path)
+  local source_stat = vim.uv.fs_stat(path)
+  if not source_stat then
+    return nil
+  end
+  return {
+    size = source_stat.size,
+    mtimeMs = source_stat.mtime.sec * 1000 + math.floor(source_stat.mtime.nsec / 1000000),
+  }
+end
+
+local function read_cached_manifest(source, output)
+  local manifest = read_manifest(vim.fs.joinpath(output, "manifest.json"))
+  if not manifest or manifest.source ~= source or type(manifest.sourceMetadata) ~= "table" then
+    return nil
+  end
+
+  local metadata = source_metadata(source)
+  if not metadata
+    or manifest.sourceMetadata.size ~= metadata.size
+    or manifest.sourceMetadata.mtimeMs ~= metadata.mtimeMs
+  then
+    return nil
+  end
+
+  if #manifest.pages == 0 then
+    return nil
+  end
+  for _, page in ipairs(manifest.pages) do
+    if type(page.file) ~= "string" or not vim.uv.fs_stat(vim.fs.joinpath(output, page.file)) then
+      return nil
+    end
+  end
+  return manifest
+end
+
+local function page_lines(state)
+  return {
+    string.format(
+      "%s  ·  page %d/%d",
+      vim.fn.fnamemodify(state.source, ":t"),
+      state.page,
+      math.max(state.total_pages, #state.pages)
+    ),
+    "",
+  }
 end
 
 local function show_page(buffer)
@@ -78,16 +131,31 @@ local function show_page(buffer)
     show_error(buffer, "The selected page does not exist")
     return
   end
+  local source = vim.fs.joinpath(state.output, page.file)
+  if state.displayed_file == source then
+    return
+  end
 
-  replace_lines(buffer, {
-    string.format("%s  ·  page %d/%d", vim.fn.fnamemodify(state.source, ":t"), state.page, #state.pages),
-    "",
-  })
+  replace_lines(buffer, page_lines(state))
   vim.bo[buffer].filetype = "nvim-office"
   snacks.image.buf.attach(buffer, {
-    src = vim.fs.joinpath(state.output, page.file),
-    pos = { 2, 0 },
+    src = source,
+    pos = { 1, 0 },
+    on_update_pre = function(placement)
+      local current = state_for(buffer)
+      if not current or current.displayed_file ~= source or not vim.api.nvim_buf_is_valid(buffer) then
+        return
+      end
+      vim.api.nvim_buf_clear_namespace(buffer, image_namespace, 0, -1)
+      local lines = page_lines(current)
+      if not vim.deep_equal(vim.api.nvim_buf_get_lines(buffer, 0, #lines, false), lines) then
+        replace_lines(buffer, lines)
+      end
+      vim.bo[buffer].filetype = "nvim-office"
+      placement.opts.pos = { 2, 0 }
+    end,
   })
+  state.displayed_file = source
 end
 
 local function move(buffer, page)
@@ -140,9 +208,26 @@ function M.refresh(buffer)
     state.job:kill(15)
   end
   clean_image(buffer)
+  state.displayed_file = nil
   replace_lines(buffer, { "Rendering " .. vim.fn.fnamemodify(state.source, ":t") .. "…" })
+  state.pages = {}
+  state.total_pages = 0
+  state.page = 1
 
-  state.job = renderer.run(state.source, state.output, config.get(), function(err)
+  state.job = renderer.run(state.source, state.output, config.get(), function(event)
+    local current = state_for(buffer)
+    if not current or current.generation ~= generation then
+      return
+    end
+    if type(event.index) ~= "number" or type(event.pageCount) ~= "number" or type(event.page) ~= "table" then
+      return
+    end
+    current.pages[event.index] = event.page
+    current.total_pages = event.pageCount
+    if event.index == current.page then
+      show_page(buffer)
+    end
+  end, function(err)
     local current = state_for(buffer)
     if not current or current.generation ~= generation then
       return
@@ -159,6 +244,7 @@ function M.refresh(buffer)
       return
     end
     current.pages = manifest.pages
+    current.total_pages = #manifest.pages
     current.page = math.min(current.page, #current.pages)
     show_page(buffer)
   end)
@@ -199,12 +285,21 @@ function M.open(buffer, path)
     source = source,
     output = output,
     pages = {},
+    total_pages = 0,
+    displayed_file = nil,
     page = 1,
     generation = 0,
     job = nil,
   }
   set_keymaps(buffer)
-  M.refresh(buffer)
+  local manifest = read_cached_manifest(source, output)
+  if manifest then
+    states[buffer].pages = manifest.pages
+    states[buffer].total_pages = #manifest.pages
+    show_page(buffer)
+  else
+    M.refresh(buffer)
+  end
 end
 
 function M.setup(options)

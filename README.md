@@ -46,6 +46,8 @@ Open a document normally:
 nvim document.docx
 ```
 
+The first page appears as soon as it is captured while the remaining pages render
+in the background. Reopening an unchanged document reuses its cached preview.
 The preview is read-only. Default mappings:
 
 | Key | Action |
@@ -54,7 +56,7 @@ The preview is read-only. Default mappings:
 | `k` | Previous page |
 | `gg` | First page |
 | `G` | Last page |
-| `r` | Render again |
+| `r` | Render again, ignoring the cache |
 | `q` | Close preview |
 
 Commands `:NvimOfficeNext`, `:NvimOfficePrevious`, and

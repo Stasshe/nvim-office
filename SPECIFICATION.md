@@ -9,10 +9,14 @@ the visual output of `docx-renderer`; do not expose extracted text as a substitu
 
 Neovim owns document state and navigation. A Node process starts an ephemeral
 loopback-only HTTP server, renders one document in headless Chrome, captures each
-page as PNG, writes a manifest, then exits. Snacks owns terminal image placement.
+page as PNG, reports completed pages in order, writes a manifest after every page
+is complete, then exits. Neovim displays the first completed page without waiting
+for the final manifest. Snacks owns terminal image placement.
 
 Generated files live under Neovim's cache directory. Source documents are never
-modified. Render failures replace the preview with an explicit error.
+modified. A complete cached preview is reused when the source size and modification
+time are unchanged. Explicit refresh bypasses the cache. Render failures replace
+the preview with an explicit error, and incomplete output is not reusable cache.
 
 ## Interface
 
@@ -28,4 +32,3 @@ and buffer-local mappings. Chrome discovery uses `CHROME_PATH` and common comman
 Neovim 0.10+, Node.js 20+, Chrome/Chromium, and a terminal supported by the Snacks
 Kitty graphics backend. Unsupported terminals and disabled image support are hard
 errors, not degraded text previews.
-
