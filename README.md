@@ -20,9 +20,9 @@ With lazy.nvim:
 
 ```lua
 {
-  "OWNER/nvim-office",
+  "Stasshe/nvim-office",
   dependencies = { "folke/snacks.nvim" },
-  build = "npm install && npm run build",
+  build = "npm install --omit=dev",
   opts = {},
 }
 ```
@@ -37,8 +37,6 @@ Enable the Snacks image module:
   },
 }
 ```
-
-Replace `OWNER` with the GitHub account that publishes the repository.
 
 ## Usage
 
@@ -100,4 +98,3 @@ pnpm render document.docx /tmp/nvim-office-preview
 ## License
 
 MIT
-

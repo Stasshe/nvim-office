@@ -10,11 +10,11 @@
     "render": "node bin/render.mjs"
   },
   "dependencies": {
-    "docx-renderer": "^0.2.2",
     "playwright-core": "^1.61.1"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",
+    "docx-renderer": "^0.2.2",
     "esbuild": "^0.25.0",
     "typescript": "^5.9.3"
   },

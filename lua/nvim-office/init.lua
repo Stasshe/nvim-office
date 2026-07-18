@@ -4,15 +4,25 @@ local renderer = require("nvim-office.render")
 local M = {}
 local states = {}
 
+local function resolve_buffer(buffer)
+  if buffer == nil or buffer == 0 then
+    return vim.api.nvim_get_current_buf()
+  end
+  return buffer
+end
+
 local function state_for(buffer)
   return states[buffer]
 end
 
 local function replace_lines(buffer, lines)
+  local readonly = vim.bo[buffer].readonly
+  vim.bo[buffer].readonly = false
   vim.bo[buffer].modifiable = true
   vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
   vim.bo[buffer].modifiable = false
   vim.bo[buffer].modified = false
+  vim.bo[buffer].readonly = readonly
 end
 
 local function clean_image(buffer)
@@ -41,7 +51,7 @@ local function read_manifest(path)
     return nil, "Could not read the render manifest"
   end
   local decoded_ok, manifest = pcall(vim.json.decode, table.concat(lines, "\n"))
-  if not decoded_ok or type(manifest.pages) ~= "table" then
+  if not decoded_ok or type(manifest) ~= "table" or type(manifest.pages) ~= "table" then
     return nil, "The render manifest is invalid"
   end
   return manifest, nil
@@ -90,32 +100,35 @@ local function move(buffer, page)
 end
 
 function M.next_page(buffer)
-  local state = state_for(buffer or 0)
+  buffer = resolve_buffer(buffer)
+  local state = state_for(buffer)
   if state then
-    move(buffer or 0, state.page + 1)
+    move(buffer, state.page + 1)
   end
 end
 
 function M.previous_page(buffer)
-  local state = state_for(buffer or 0)
+  buffer = resolve_buffer(buffer)
+  local state = state_for(buffer)
   if state then
-    move(buffer or 0, state.page - 1)
+    move(buffer, state.page - 1)
   end
 end
 
 function M.first_page(buffer)
-  move(buffer or 0, 1)
+  move(resolve_buffer(buffer), 1)
 end
 
 function M.last_page(buffer)
-  local state = state_for(buffer or 0)
+  buffer = resolve_buffer(buffer)
+  local state = state_for(buffer)
   if state then
-    move(buffer or 0, #state.pages)
+    move(buffer, #state.pages)
   end
 end
 
 function M.refresh(buffer)
-  buffer = buffer or 0
+  buffer = resolve_buffer(buffer)
   local state = state_for(buffer)
   if not state then
     return
@@ -173,7 +186,7 @@ local function set_keymaps(buffer)
 end
 
 function M.open(buffer, path)
-  buffer = buffer or vim.api.nvim_get_current_buf()
+  buffer = resolve_buffer(buffer)
   local source = vim.fn.fnamemodify(path or vim.api.nvim_buf_get_name(buffer), ":p")
   local output = vim.fs.joinpath(vim.fn.stdpath("cache"), "nvim-office", vim.fn.sha256(source))
 
@@ -211,4 +224,3 @@ vim.api.nvim_create_autocmd("BufDelete", {
 })
 
 return M
-
