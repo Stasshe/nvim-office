@@ -42,11 +42,12 @@ local function show_error(buffer, message)
     state.displayed_file = nil
   end
   clean_image(buffer)
-  replace_lines(buffer, {
+  local lines = {
     "nvim-office could not render this document.",
     "",
-    message,
-  })
+  }
+  vim.list_extend(lines, vim.split(message, "\n", { plain = true }))
+  replace_lines(buffer, lines)
   vim.bo[buffer].filetype = "nvim-office-error"
 end
 
